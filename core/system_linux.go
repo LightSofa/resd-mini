@@ -56,9 +56,9 @@ func (s *SystemSetup) setProxy() error {
 
 	commands := [][]string{
 		{"gsettings", "set", "org.gnome.system.proxy", "mode", "manual"},
-		{"gsettings", "set", "org.gnome.system.proxy.http", "host", "127.0.0.1"},
+		{"gsettings", "set", "org.gnome.system.proxy.http", "host", resolvedProxyHost()},
 		{"gsettings", "set", "org.gnome.system.proxy.http", "port", globalConfig.Port},
-		{"gsettings", "set", "org.gnome.system.proxy.https", "host", "127.0.0.1"},
+		{"gsettings", "set", "org.gnome.system.proxy.https", "host", resolvedProxyHost()},
 		{"gsettings", "set", "org.gnome.system.proxy.https", "port", globalConfig.Port},
 	}
 

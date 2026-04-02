@@ -30,14 +30,14 @@ func (a *App) onReady() {
 	go httpServerOnce.run()
 
 	time.AfterFunc(200*time.Millisecond, func() {
-		_ = OpenBrowser("http://127.0.0.1:" + globalConfig.Port)
+		_ = OpenBrowser(panelBaseURL())
 	})
 
 	go func() {
 		for {
 			select {
 			case <-menuOpen.ClickedCh:
-				_ = OpenBrowser("http://127.0.0.1:" + globalConfig.Port)
+				_ = OpenBrowser(panelBaseURL())
 			case <-menuProxy.ClickedCh:
 				if appOnce.IsProxy {
 					_ = a.UnsetSystemProxy()

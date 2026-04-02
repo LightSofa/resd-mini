@@ -8,6 +8,7 @@ export const useWsStore = defineStore('ws-store', () => {
     const isOpenSocket = ref(false)
     const isReconnect = ref(true)
     const port = ref("8899")
+    const host = ref("")
 
     const onMessageHandles = ref<any>({
         ping: (res: any) => {
@@ -28,11 +29,29 @@ export const useWsStore = defineStore('ws-store', () => {
         port.value = p
     }
 
+    const setHost = (h: string) => {
+        host.value = h
+    }
+
+    const resolveWsHost = () => {
+        const fromConfig = (host.value || "").replace(/^\[|\]$/g, "").trim()
+        if (!fromConfig || fromConfig === "0.0.0.0" || fromConfig === "::") {
+            return (typeof window !== "undefined" && window.location.hostname) ? window.location.hostname : "localhost"
+        }
+        return fromConfig
+    }
+
     const websocketInit = () => {
         if (isOpenSocket.value) {
             return
         }
-        websocketTask.value = new WebSocket( "http://127.0.0.1:" + port.value +"/api/ws")
+        let wsURL = "ws://" + resolveWsHost() + ":" + port.value + "/api/ws"
+        if (typeof window !== "undefined" && /^https?:$/.test(window.location.protocol)) {
+            const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:"
+            wsURL = `${wsProto}//${window.location.host}/api/ws`
+        }
+
+        websocketTask.value = new WebSocket(wsURL)
         websocketTask.value.onopen = (event: wsType.Event) => {
             heartbeatTime.value && clearInterval(heartbeatTime.value)
             isOpenSocket.value = true
@@ -92,6 +111,6 @@ export const useWsStore = defineStore('ws-store', () => {
     }
 
     return {
-        setPort, websocketInit, send, close, bindMessageHandle
+        setHost, setPort, websocketInit, send, close, bindMessageHandle
     }
 })

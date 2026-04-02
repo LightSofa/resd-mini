@@ -41,6 +41,7 @@ const uiLocale = computed(() => {
 
 onMounted(async () => {
   await store.init()
+  wsStore.setHost(store.globalConfig.Host)
   wsStore.setPort(store.globalConfig.Port)
   wsStore.websocketInit()
   wsStore.bindMessageHandle({
