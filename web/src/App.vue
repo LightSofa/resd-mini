@@ -16,6 +16,7 @@ import {useWsStore} from "@/stores/ws"
 import {computed, onMounted} from "vue"
 import type {wsType} from "@/types/ws"
 import {useI18n} from 'vue-i18n'
+import {copyToClipboard} from "@/func"
 
 const store = useIndexStore()
 const wsStore = useWsStore()
@@ -58,7 +59,7 @@ onMounted(async () => {
   wsStore.bindMessageHandle({
     type: "clipboard",
     event: (res: wsType.Clipboard)=>{
-      navigator.clipboard.writeText(res.content);
+      copyToClipboard(res.content)
     }
   })
 

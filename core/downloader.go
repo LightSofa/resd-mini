@@ -240,6 +240,7 @@ func (fd *FileDownloader) createDownloadTasks() {
 
 func (fd *FileDownloader) startDownload() error {
 	wg := &sync.WaitGroup{}
+	progressWG := &sync.WaitGroup{}
 	progressChan := make(chan ProgressChan, len(fd.DownloadTaskList))
 	errorChan := make(chan error, len(fd.DownloadTaskList))
 
@@ -248,7 +249,9 @@ func (fd *FileDownloader) startDownload() error {
 		go fd.startDownloadTask(wg, progressChan, errorChan, task)
 	}
 
+	progressWG.Add(1)
 	go func() {
+		defer progressWG.Done()
 		taskProgress := make([]int64, len(fd.DownloadTaskList))
 		totalDownloaded := int64(0)
 
@@ -281,6 +284,7 @@ func (fd *FileDownloader) startDownload() error {
 	}
 
 	if len(errArr) > 0 {
+		progressWG.Wait()
 		if !fd.RetryOnError && fd.IsMultiPart {
 			// 降级
 			fd.RetryOnError = true
@@ -294,8 +298,10 @@ func (fd *FileDownloader) startDownload() error {
 	}
 
 	if err := fd.verifyDownload(); err != nil {
+		progressWG.Wait()
 		return err
 	}
+	progressWG.Wait()
 
 	return nil
 }

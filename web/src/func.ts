@@ -42,3 +42,36 @@ export const formatSize = (size: number | string) => {
 export const browserOpenURL = (url: string) => {
     window.open(url, "_blank")
 }
+
+export const copyToClipboard = async (text: string): Promise<boolean> => {
+    if (!text) {
+        return false
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        try {
+            await navigator.clipboard.writeText(text)
+            return true
+        } catch (_) {
+            // fallback below
+        }
+    }
+
+    try {
+        const input = document.createElement("textarea")
+        input.value = text
+        input.setAttribute("readonly", "readonly")
+        input.style.position = "fixed"
+        input.style.opacity = "0"
+        input.style.pointerEvents = "none"
+        document.body.appendChild(input)
+        input.focus()
+        input.select()
+        input.setSelectionRange(0, input.value.length)
+        const ok = document.execCommand("copy")
+        document.body.removeChild(input)
+        return ok
+    } catch (_) {
+        return false
+    }
+}

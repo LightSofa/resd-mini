@@ -3,7 +3,6 @@ package core
 import (
 	"embed"
 	"fmt"
-	"fyne.io/systray"
 	"github.com/vrischmann/userdir"
 	"os"
 	"path/filepath"
@@ -25,9 +24,6 @@ type App struct {
 	PublicCrt   []byte            `json:"-"`
 	PrivateKey  []byte            `json:"-"`
 	IsProxy     bool              `json:"-"`
-	MenuQuit    *systray.MenuItem `json:"-"`
-	MenuProxy   *systray.MenuItem `json:"-"`
-	MenuOpen    *systray.MenuItem `json:"-"`
 }
 
 var (
@@ -121,52 +117,6 @@ ILKEQKmPPzKs7kp/7Nz+2cT3
 	return appOnce
 }
 
-func (a *App) Startup() {
-	systray.Run(a.OnReady, a.OnExit)
-}
-
-func (a *App) OnExit() {
-	a.UnsetSystemProxy()
-	globalLogger.Close()
-}
-
-func (a *App) OnReady() {
-	systray.SetIcon(a.getIcon())
-	systray.SetTitle("")
-	systray.SetTooltip(a.Description)
-
-	a.MenuProxy = systray.AddMenuItem("Open proxy", "Set up system proxy")
-	a.MenuOpen = systray.AddMenuItem("Open panel", "Open the management panel")
-	a.MenuQuit = systray.AddMenuItem("Exit", "Exit the application")
-
-	go httpServerOnce.run()
-
-	time.AfterFunc(200*time.Millisecond, func() {
-		_ = OpenBrowser("http://127.0.0.1:" + globalConfig.Port)
-	})
-
-	go func() {
-		for {
-			select {
-			case <-a.MenuOpen.ClickedCh:
-				_ = OpenBrowser("http://127.0.0.1:" + globalConfig.Port)
-			case <-a.MenuProxy.ClickedCh:
-				if appOnce.IsProxy {
-					a.UnsetSystemProxy()
-				} else {
-					a.OpenSystemProxy()
-				}
-				httpServerOnce.send("updateProxyStatus", map[string]interface{}{
-					"value": appOnce.IsProxy,
-				})
-			case <-a.MenuQuit.ClickedCh:
-				systray.Quit()
-				os.Exit(0)
-			}
-		}
-	}()
-}
-
 func (a *App) getIcon() []byte {
 	file, err := a.assets.ReadFile("web/dist/favicon.ico")
 	if err != nil {
@@ -190,11 +140,7 @@ func (a *App) installCert() (string, error) {
 
 func (a *App) OpenSystemProxy() error {
 	defer func() {
-		if a.IsProxy {
-			a.MenuProxy.SetTitle("Close proxy")
-		} else {
-			a.MenuProxy.SetTitle("Open proxy")
-		}
+		a.updateProxyMenuTitle()
 	}()
 	if a.IsProxy {
 		return nil
@@ -209,11 +155,7 @@ func (a *App) OpenSystemProxy() error {
 
 func (a *App) UnsetSystemProxy() error {
 	defer func() {
-		if a.IsProxy {
-			a.MenuProxy.SetTitle("Close proxy")
-		} else {
-			a.MenuProxy.SetTitle("Open proxy")
-		}
+		a.updateProxyMenuTitle()
 	}()
 
 	if !a.IsProxy {

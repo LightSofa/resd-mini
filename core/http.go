@@ -85,12 +85,28 @@ func (h *HttpServer) run() {
 	mux.HandleFunc("/api/batch-export", h.batchExport)
 	mux.HandleFunc("/api/cert", h.downCert)
 
+	// Script-friendly API
+	mux.HandleFunc("/api/v1/health", h.health)
+	mux.HandleFunc("/api/v1/resources", h.listResources)
+	mux.HandleFunc("/api/v1/resource", h.getResource)
+	mux.HandleFunc("/api/v1/proxy/open", h.openSystemProxy)
+	mux.HandleFunc("/api/v1/proxy/unset", h.unsetSystemProxy)
+	mux.HandleFunc("/api/v1/proxy/status", h.isProxy)
+	mux.HandleFunc("/api/v1/config", h.v1Config)
+	mux.HandleFunc("/api/v1/download", h.download)
+	mux.HandleFunc("/api/v1/cancel", h.cancel)
+	mux.HandleFunc("/api/v1/clear", h.clear)
+	mux.HandleFunc("/api/v1/delete", h.delete)
+	mux.HandleFunc("/api/v1/set-type", h.setType)
+	mux.HandleFunc("/api/v1/wx-file-decode", h.wxFileDecode)
+
 	// Static assets endpoint
 	mux.HandleFunc("/", h.staticHandler)
 
 	server := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Host == globalConfig.Host+":"+globalConfig.Port || r.Host == "127.0.0.1:"+globalConfig.Port && strings.Contains(r.URL.Path, "/api") {
+			panelHost := strings.HasSuffix(r.Host, ":"+globalConfig.Port)
+			if panelHost {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -229,6 +245,7 @@ func (h *HttpServer) handleMessages() {
 }
 
 func (h *HttpServer) send(t string, data interface{}) {
+	h.syncStateByEvent(t, data)
 	jsonData, err := json.Marshal(map[string]interface{}{
 		"type": t,
 		"data": data,
@@ -238,6 +255,34 @@ func (h *HttpServer) send(t string, data interface{}) {
 		return
 	}
 	h.broadcast <- jsonData
+}
+
+func (h *HttpServer) syncStateByEvent(eventType string, data interface{}) {
+	switch eventType {
+	case "newResources":
+		if media, ok := data.(shared.MediaInfo); ok {
+			resourceOnce.rememberMedia(media)
+		}
+	case "downloadProgress":
+		if payload, ok := data.(map[string]interface{}); ok {
+			resourceOnce.updateDownloadStatus(
+				toString(payload["Id"]),
+				toString(payload["Status"]),
+				toString(payload["Message"]),
+				toString(payload["SavePath"]),
+			)
+		}
+	}
+}
+
+func toString(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", value)
 }
 
 func (h *HttpServer) writeJson(w http.ResponseWriter, data *ResponseData) {
@@ -399,8 +444,49 @@ func (h *HttpServer) appInfo(w http.ResponseWriter, r *http.Request) {
 	h.success(w, appOnce)
 }
 
+func (h *HttpServer) health(w http.ResponseWriter, r *http.Request) {
+	h.success(w, respData{
+		"status": "ok",
+		"name":   appOnce.AppName,
+		"port":   globalConfig.Port,
+		"proxy":  appOnce.IsProxy,
+	})
+}
+
+func (h *HttpServer) listResources(w http.ResponseWriter, r *http.Request) {
+	h.success(w, respData{
+		"items": resourceOnce.listMedia(),
+	})
+}
+
+func (h *HttpServer) getResource(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		h.error(w, "missing id")
+		return
+	}
+	media, ok := resourceOnce.getMediaByID(id)
+	if !ok {
+		h.error(w, "resource not found")
+		return
+	}
+	h.success(w, media)
+}
+
 func (h *HttpServer) getConfig(w http.ResponseWriter, r *http.Request) {
 	h.success(w, globalConfig)
+}
+
+func (h *HttpServer) v1Config(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		h.getConfig(w, r)
+		return
+	}
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		h.setConfig(w, r)
+		return
+	}
+	h.error(w, "method not allowed")
 }
 
 func (h *HttpServer) setConfig(w http.ResponseWriter, r *http.Request) {
@@ -456,6 +542,7 @@ func (h *HttpServer) download(w http.ResponseWriter, r *http.Request) {
 		h.error(w, err.Error())
 		return
 	}
+	resourceOnce.rememberMedia(data.MediaInfo)
 	resourceOnce.download(data.MediaInfo, data.DecodeStr)
 	h.success(w)
 }

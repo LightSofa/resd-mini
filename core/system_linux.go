@@ -10,6 +10,14 @@ import (
 	"strings"
 )
 
+func (s *SystemSetup) isGatewayLikeDistro() bool {
+	distro, err := s.getLinuxDistro()
+	if err != nil {
+		return false
+	}
+	return distro == "openwrt" || distro == "istoreos"
+}
+
 func (s *SystemSetup) getLinuxDistro() (string, error) {
 	data, err := os.ReadFile("/etc/os-release")
 	if err != nil {
@@ -29,7 +37,7 @@ func (s *SystemSetup) runCommand(args []string, sudo bool) ([]byte, error) {
 	}
 
 	var cmd *exec.Cmd
-	if s.Password != "" && sudo {
+	if s.Password != "" && sudo && os.Geteuid() != 0 {
 		cmd = exec.Command("sudo", append([]string{"-S"}, args...)...)
 		cmd.Stdin = bytes.NewReader([]byte(s.Password + "\n"))
 	} else {
@@ -41,6 +49,11 @@ func (s *SystemSetup) runCommand(args []string, sudo bool) ([]byte, error) {
 }
 
 func (s *SystemSetup) setProxy() error {
+	if s.isGatewayLikeDistro() {
+		// Headless gateway systems have no desktop proxy manager.
+		return nil
+	}
+
 	commands := [][]string{
 		{"gsettings", "set", "org.gnome.system.proxy", "mode", "manual"},
 		{"gsettings", "set", "org.gnome.system.proxy.http", "host", "127.0.0.1"},
@@ -68,6 +81,11 @@ func (s *SystemSetup) setProxy() error {
 }
 
 func (s *SystemSetup) unsetProxy() error {
+	if s.isGatewayLikeDistro() {
+		// Headless gateway systems have no desktop proxy manager.
+		return nil
+	}
+
 	cmd := []string{"gsettings", "set", "org.gnome.system.proxy", "mode", "none"}
 	output, err := s.runCommand(cmd, false)
 	if err != nil {
@@ -99,6 +117,10 @@ func (s *SystemSetup) installCert() (string, error) {
 	case "arch":
 		certPath = "/usr/share/ca-certificates/trust-source/" + certName
 		updateCmd = []string{"update-ca-trust"}
+	case "openwrt", "istoreos":
+		// OpenWrt/iStoreOS doesn't ship Debian-style CA update commands by default.
+		// In gateway mode, clients should install CA manually from /api/cert.
+		return "", nil
 	default:
 		certPath = "/usr/local/share/ca-certificates/" + certName
 	}

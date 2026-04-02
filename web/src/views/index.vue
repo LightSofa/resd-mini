@@ -159,7 +159,7 @@ import {
   Apps,
   TrashOutline, CloseOutline
 } from "@vicons/ionicons5"
-import {browserOpenURL, formatSize} from "@/func"
+import {browserOpenURL, copyToClipboard, formatSize} from "@/func"
 
 const {t} = useI18n()
 const wsStore = useWsStore()
@@ -643,12 +643,22 @@ const dataAction = (row: appType.MediaInfo, index: number, type: string) => {
       }
       break
     case "copy":
-      navigator.clipboard.writeText(row.Url)
-      window?.$message?.success(t("common.copy_success"))
+      copyToClipboard(row.Url).then((ok) => {
+        if (ok) {
+          window?.$message?.success(t("common.copy_success"))
+          return
+        }
+        window?.$message?.error(t("common.copy_fail"))
+      })
       break
     case "json":
-      navigator.clipboard.writeText(encodeURIComponent(JSON.stringify(row)))
-      window?.$message?.success(t("common.copy_success"))
+      copyToClipboard(encodeURIComponent(JSON.stringify(row))).then((ok) => {
+        if (ok) {
+          window?.$message?.success(t("common.copy_success"))
+          return
+        }
+        window?.$message?.error(t("common.copy_fail"))
+      })
       break
     case "open":
       browserOpenURL(row.Url)

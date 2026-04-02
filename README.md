@@ -94,3 +94,81 @@
 
 > 本软件仅供学习与研究用途，禁止用于任何商业或违法用途。  
 如因此产生的任何法律责任，概与作者无关！
+
+---
+
+## 🧱 iStoreOS / OpenWrt 常驻后台运行
+
+Linux 构建版本已支持无 GUI 常驻模式，直接以前台进程运行即可由 `procd` 托管为后台服务。
+
+### 1. 编译（示例）
+
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o resd-mini
+```
+
+### 2. 部署到网关
+
+```bash
+scp .\\resd-mini root@iStoreOS:/usr/bin/resd-mini
+scp .\\build\\istoreos\\resd-mini.init root@iStoreOS:/etc/init.d/resd-mini
+scp .\\build\\istoreos\\resd-mini.config.example root@iStoreOS:/etc/config/resd-mini
+```
+
+### 3. 启用服务
+
+```bash
+ssh root@iStoreOS
+chmod +x /etc/init.d/resd-mini
+mkdir -p /root/downloads/resd-mini
+/etc/init.d/resd-mini enable
+/etc/init.d/resd-mini start
+logread -f | grep resd-mini
+```
+
+服务脚本通过环境变量控制监听与下载路径：
+
+- `RESD_HOST`（建议网关场景设为 `0.0.0.0`）
+- `RESD_PORT`（默认 `8899`）
+- `RESD_SAVE_DIR`
+
+---
+
+## 🔌 Web API（自动化脚本）
+
+新增脚本友好的 `/api/v1/*` 接口：
+
+- `GET /api/v1/health`：健康状态
+- `GET /api/v1/config`：读取配置
+- `POST|PUT /api/v1/config`：更新配置
+- `GET /api/v1/proxy/status`：代理状态
+- `POST /api/v1/proxy/open`：开启系统代理
+- `POST /api/v1/proxy/unset`：关闭系统代理
+- `GET /api/v1/resources`：获取当前资源列表
+- `GET /api/v1/resource?id=<id>`：获取单个资源详情
+- `POST /api/v1/download`：创建下载任务
+- `POST /api/v1/cancel`：取消下载任务
+- `POST /api/v1/clear`：清空资源缓存
+- `POST /api/v1/delete`：删除指定资源（按 `urlSign`）
+- `POST /api/v1/set-type`：设置资源过滤类型
+- `POST /api/v1/wx-file-decode`：视频号文件解密
+
+示例：
+
+```bash
+# 健康检查
+curl http://127.0.0.1:8899/api/v1/health
+
+# 读取资源列表
+curl http://127.0.0.1:8899/api/v1/resources
+
+# 下载资源
+curl -X POST http://127.0.0.1:8899/api/v1/download \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "Id":"demo-id",
+    "Url":"https://example.com/a.mp4",
+    "Suffix":".mp4",
+    "OtherData":{}
+  }'
+```

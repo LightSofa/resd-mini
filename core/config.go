@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -112,8 +113,58 @@ func initConfig() *Config {
 	if err := json.Unmarshal(finalBytes, globalConfig); err != nil {
 		globalLogger.Esg(err, "unmarshal merged config to struct failed")
 	}
+	globalConfig.applyEnvOverrides()
 
 	return globalConfig
+}
+
+func (c *Config) applyEnvOverrides() {
+	changed := false
+	if v := strings.TrimSpace(os.Getenv("RESD_HOST")); v != "" {
+		c.Host = v
+		changed = true
+	}
+	if v := strings.TrimSpace(os.Getenv("RESD_PORT")); v != "" {
+		c.Port = v
+		changed = true
+	}
+	if v := strings.TrimSpace(os.Getenv("RESD_SAVE_DIR")); v != "" {
+		c.SaveDirectory = v
+		changed = true
+	}
+	if v := strings.TrimSpace(os.Getenv("RESD_UPSTREAM_PROXY")); v != "" {
+		c.UpstreamProxy = v
+		changed = true
+	}
+	if v := strings.TrimSpace(os.Getenv("RESD_RULE")); v != "" {
+		c.Rule = v
+		changed = true
+	}
+	if v := strings.TrimSpace(os.Getenv("RESD_OPEN_PROXY")); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			c.OpenProxy = parsed
+			changed = true
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("RESD_AUTO_PROXY")); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			c.AutoProxy = parsed
+			changed = true
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("RESD_DOWNLOAD_PROXY")); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			c.DownloadProxy = parsed
+			changed = true
+		}
+	}
+
+	if !changed || c.storage == nil {
+		return
+	}
+	if payload, err := json.Marshal(c); err == nil {
+		_ = c.storage.Store(payload)
+	}
 }
 
 func getDefaultMimeMap() map[string]MimeInfo {

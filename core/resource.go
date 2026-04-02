@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"resd-mini/core/shared"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -22,10 +21,12 @@ type WxFileDecodeResult struct {
 }
 
 type Resource struct {
-	mediaMark  sync.Map
-	tasks      sync.Map
-	resType    map[string]bool
-	resTypeMux sync.RWMutex
+	mediaMark    sync.Map
+	tasks        sync.Map
+	mediaByID    sync.Map
+	mediaSignIdx sync.Map
+	resType      map[string]bool
+	resTypeMux   sync.RWMutex
 }
 
 func initResource() *Resource {
@@ -81,20 +82,85 @@ func (r *Resource) setResType(n []string) {
 }
 
 func (r *Resource) clear() {
-	r.mediaMark.Clear()
+	clearSyncMap(&r.mediaMark)
+	clearSyncMap(&r.mediaByID)
+	clearSyncMap(&r.mediaSignIdx)
 }
 
 func (r *Resource) delete(sign string) {
 	r.mediaMark.Delete(sign)
+	if id, ok := r.mediaSignIdx.Load(sign); ok {
+		r.mediaByID.Delete(id.(string))
+		r.mediaSignIdx.Delete(sign)
+	}
 }
 
 func (r *Resource) cancel(id string) error {
 	if d, ok := r.tasks.Load(id); ok {
 		d.(*FileDownloader).Cancel()
 		r.tasks.Delete(id)
+		r.updateDownloadStatus(id, shared.DownloadStatusError, "cancelled", "")
 		return nil
 	}
 	return errors.New("task not found")
+}
+
+func (r *Resource) rememberMedia(media shared.MediaInfo) {
+	if media.Id == "" {
+		return
+	}
+	if media.Status == "" {
+		media.Status = shared.DownloadStatusReady
+	}
+	if media.OtherData == nil {
+		media.OtherData = map[string]string{}
+	}
+	r.mediaByID.Store(media.Id, media)
+	if media.UrlSign != "" {
+		r.mediaMark.Store(media.UrlSign, true)
+		r.mediaSignIdx.Store(media.UrlSign, media.Id)
+	}
+}
+
+func (r *Resource) updateDownloadStatus(id, status, message, savePath string) {
+	if id == "" {
+		return
+	}
+	value, ok := r.mediaByID.Load(id)
+	if !ok {
+		return
+	}
+	media := value.(shared.MediaInfo)
+	if status != "" {
+		media.Status = status
+	}
+	if savePath != "" {
+		media.SavePath = savePath
+	}
+	if message != "" {
+		if media.OtherData == nil {
+			media.OtherData = map[string]string{}
+		}
+		media.OtherData["last_message"] = message
+	}
+	r.mediaByID.Store(id, media)
+}
+
+func (r *Resource) listMedia() []shared.MediaInfo {
+	result := make([]shared.MediaInfo, 0, 128)
+	r.mediaByID.Range(func(key, value interface{}) bool {
+		result = append(result, value.(shared.MediaInfo))
+		return true
+	})
+	return result
+}
+
+func (r *Resource) getMediaByID(id string) (shared.MediaInfo, bool) {
+	value, ok := r.mediaByID.Load(id)
+	if !ok {
+		return shared.MediaInfo{}, false
+	}
+	return value.(shared.MediaInfo), true
 }
 
 func (r *Resource) download(mediaInfo shared.MediaInfo, decodeStr string) {
@@ -158,9 +224,20 @@ func (r *Resource) download(mediaInfo shared.MediaInfo, decodeStr string) {
 
 		downloader := NewFileDownloader(rawUrl, mediaInfo.SavePath, globalConfig.TaskNumber, headers)
 		downloader.progressCallback = func(totalDownloaded, totalSize float64, taskID int, taskProgress float64) {
-			r.progressEventsEmit(mediaInfo, strconv.Itoa(int(totalDownloaded*100/totalSize))+"%", shared.DownloadStatusRunning)
+			if totalSize > 0 {
+				percent := int(totalDownloaded * 100 / totalSize)
+				if percent < 0 {
+					percent = 0
+				} else if percent > 100 {
+					percent = 100
+				}
+				r.progressEventsEmit(mediaInfo, fmt.Sprintf("%d%%", percent), shared.DownloadStatusRunning)
+				return
+			}
+			r.progressEventsEmit(mediaInfo, fmt.Sprintf("%.0f bytes", totalDownloaded), shared.DownloadStatusRunning)
 		}
 		r.tasks.Store(mediaInfo.Id, downloader)
+		defer r.tasks.Delete(mediaInfo.Id)
 		err := downloader.Start()
 		mediaInfo.SavePath = downloader.FileName
 		if err != nil {
@@ -234,6 +311,7 @@ func (r *Resource) progressEventsEmit(mediaInfo shared.MediaInfo, args ...string
 	if len(args) > 1 {
 		Status = args[1]
 	}
+	r.updateDownloadStatus(mediaInfo.Id, Status, Message, mediaInfo.SavePath)
 
 	httpServerOnce.send("downloadProgress", map[string]interface{}{
 		"Id":       mediaInfo.Id,
@@ -242,6 +320,13 @@ func (r *Resource) progressEventsEmit(mediaInfo shared.MediaInfo, args ...string
 		"Message":  Message,
 	})
 	return
+}
+
+func clearSyncMap(m *sync.Map) {
+	m.Range(func(key, value interface{}) bool {
+		m.Delete(key)
+		return true
+	})
 }
 
 func (r *Resource) decodeWxFile(fileName, decodeStr string) error {
