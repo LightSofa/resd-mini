@@ -593,7 +593,16 @@ func (h *HttpServer) batchExport(w http.ResponseWriter, r *http.Request) {
 		h.error(w, err.Error())
 		return
 	}
-	fileName := filepath.Join(globalConfig.SaveDirectory, "res-downloader-"+shared.GetCurrentDateTimeFormatted()+".txt")
+	saveDir := strings.TrimSpace(globalConfig.SaveDirectory)
+	if saveDir == "" {
+		h.error(w, "save directory is empty")
+		return
+	}
+	if err := os.MkdirAll(saveDir, 0750); err != nil {
+		h.error(w, "create save directory failed: "+err.Error())
+		return
+	}
+	fileName := filepath.Join(saveDir, "res-downloader-"+shared.GetCurrentDateTimeFormatted()+".txt")
 	err := os.WriteFile(fileName, []byte(data.Content), 0644)
 	if err != nil {
 		h.error(w, err.Error())

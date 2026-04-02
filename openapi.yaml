@@ -1,0 +1,610 @@
+openapi: 3.0.3
+info:
+  title: resd-mini Web API
+  version: "1.0.0"
+  description: |
+    resd-mini 脚本友好 API 规范（与当前 `/api/v1/*` 实现对应）。
+
+    注意：
+    - 业务成功/失败以响应体中的 `code` 字段为准（`1` 成功，`0` 失败）。
+    - 当前实现通常返回 HTTP 200。
+servers:
+  - url: http://127.0.0.1:8899
+    description: Local default server
+tags:
+  - name: system
+  - name: config
+  - name: proxy
+  - name: resources
+  - name: download
+paths:
+  /api/v1/health:
+    get:
+      tags: [system]
+      summary: 健康检查
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseHealth"
+              examples:
+                ok:
+                  value:
+                    code: 1
+                    message: ok
+                    data:
+                      status: ok
+                      name: resd-mini
+                      port: "8899"
+                      proxy: false
+  /api/v1/config:
+    get:
+      tags: [config]
+      summary: 读取配置
+      operationId: getConfig
+      responses:
+        "200":
+          description: Config response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseConfig"
+    post:
+      tags: [config]
+      summary: 更新配置（全量）
+      description: 不支持 partial patch，建议先 GET 后修改再全量提交。
+      operationId: updateConfigPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Config"
+      responses:
+        "200":
+          description: Update result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseEmpty"
+    put:
+      tags: [config]
+      summary: 更新配置（全量）
+      description: 与 POST 行为一致。
+      operationId: updateConfigPut
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Config"
+      responses:
+        "200":
+          description: Update result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseEmpty"
+  /api/v1/proxy/status:
+    get:
+      tags: [proxy]
+      summary: 查询系统代理状态
+      operationId: getProxyStatus
+      responses:
+        "200":
+          description: Proxy status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseProxyStatus"
+  /api/v1/proxy/open:
+    post:
+      tags: [proxy]
+      summary: 开启系统代理
+      operationId: openProxy
+      responses:
+        "200":
+          description: Proxy status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseProxyStatus"
+  /api/v1/proxy/unset:
+    post:
+      tags: [proxy]
+      summary: 关闭系统代理
+      operationId: unsetProxy
+      responses:
+        "200":
+          description: Proxy status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseProxyStatus"
+  /api/v1/resources:
+    get:
+      tags: [resources]
+      summary: 获取资源列表
+      operationId: listResources
+      responses:
+        "200":
+          description: Resource list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseResourceList"
+  /api/v1/resource:
+    get:
+      tags: [resources]
+      summary: 获取单个资源详情
+      operationId: getResourceById
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+          description: 资源 ID（MediaInfo.Id）
+      responses:
+        "200":
+          description: Resource detail or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseMediaInfo"
+  /api/v1/download:
+    post:
+      tags: [download]
+      summary: 创建下载任务
+      operationId: createDownloadTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadRequest"
+            examples:
+              basic:
+                value:
+                  Id: demo-id
+                  Url: https://example.com/a.mp4
+                  Suffix: .mp4
+                  Description: demo-video
+                  OtherData:
+                    headers: "{\"Referer\":[\"https://example.com\"],\"User-Agent\":[\"Mozilla/5.0\"]}"
+                  decodeStr: ""
+      responses:
+        "200":
+          description: Create result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseEmpty"
+  /api/v1/cancel:
+    post:
+      tags: [download]
+      summary: 取消下载任务
+      operationId: cancelDownloadTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelRequest"
+            examples:
+              basic:
+                value:
+                  Id: demo-id
+      responses:
+        "200":
+          description: Cancel result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseEmpty"
+  /api/v1/clear:
+    post:
+      tags: [resources]
+      summary: 清空资源缓存
+      operationId: clearResources
+      responses:
+        "200":
+          description: Clear result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseEmpty"
+  /api/v1/delete:
+    post:
+      tags: [resources]
+      summary: 删除指定资源（按 UrlSign）
+      operationId: deleteResources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteRequest"
+            examples:
+              basic:
+                value:
+                  sign: [url-sign-1, url-sign-2]
+      responses:
+        "200":
+          description: Delete result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseEmpty"
+  /api/v1/set-type:
+    post:
+      tags: [resources]
+      summary: 设置抓取类型过滤
+      operationId: setResourceType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetTypeRequest"
+            examples:
+              basic:
+                value:
+                  type: video,audio
+      responses:
+        "200":
+          description: Set type result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseEmpty"
+  /api/v1/wx-file-decode:
+    post:
+      tags: [download]
+      summary: 视频号文件解密
+      operationId: wxFileDecode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WxFileDecodeRequest"
+            examples:
+              basic:
+                value:
+                  filename: C:/Users/xxx/Downloads/source.mp4
+                  decodeStr: BASE64_DECODE_KEY
+      responses:
+        "200":
+          description: Decode result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseWxFileDecode"
+components:
+  schemas:
+    ApiResponseBase:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: 1=成功, 0=失败
+          example: 1
+        message:
+          type: string
+          example: ok
+      required: [code, message]
+    ApiResponseEmpty:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponseBase"
+        - type: object
+          properties:
+            data:
+              nullable: true
+              example: null
+          required: [data]
+    ApiResponseHealth:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/HealthData"
+          required: [data]
+    ApiResponseConfig:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Config"
+          required: [data]
+    ApiResponseProxyStatus:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                value:
+                  type: boolean
+                  description: 当前系统代理状态
+              required: [value]
+          required: [data]
+    ApiResponseResourceList:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/MediaInfo"
+              required: [items]
+          required: [data]
+    ApiResponseMediaInfo:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponseBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/MediaInfo"
+          required: [data]
+    ApiResponseWxFileDecode:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponseBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                save_path:
+                  type: string
+                  description: 解密后文件路径
+              required: [save_path]
+          required: [data]
+    HealthData:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        name:
+          type: string
+          example: resd-mini
+        port:
+          type: string
+          example: "8899"
+        proxy:
+          type: boolean
+          example: false
+      required: [status, name, port, proxy]
+    MimeInfo:
+      type: object
+      properties:
+        Type:
+          type: string
+          description: 资源分类，如 video/audio/image/m3u8/live
+          example: video
+        Suffix:
+          type: string
+          description: 保存后缀
+          example: .mp4
+      required: [Type, Suffix]
+    Config:
+      type: object
+      description: 完整配置对象；更新配置时建议全量提交。
+      properties:
+        Theme:
+          type: string
+          example: lightTheme
+        Locale:
+          type: string
+          example: zh
+        Host:
+          type: string
+          example: 127.0.0.1
+        Port:
+          type: string
+          example: "8899"
+        Quality:
+          type: integer
+          description: 0默认, 1超清, 2高, 3中, 4低（主要用于视频号）
+          example: 0
+        SaveDirectory:
+          type: string
+          example: C:/Users/xxx/Downloads
+        FilenameLen:
+          type: integer
+          description: 描述命名最大长度；<=0 时默认按 10 处理
+          example: 20
+        FilenameTime:
+          type: boolean
+          description: 文件名追加时间戳
+          example: true
+        UpstreamProxy:
+          type: string
+          example: http://127.0.0.1:7890
+        OpenProxy:
+          type: boolean
+          description: 抓包转发是否使用上游代理
+          example: false
+        DownloadProxy:
+          type: boolean
+          description: 下载时是否使用上游代理
+          example: false
+        AutoProxy:
+          type: boolean
+          description: 启动时自动开启系统代理
+          example: false
+        WxAction:
+          type: boolean
+          description: 视频号全量拦截开关
+          example: true
+        TaskNumber:
+          type: integer
+          description: 单任务分片并发数
+          example: 8
+        DownNumber:
+          type: integer
+          description: 同时下载任务数
+          example: 3
+        UserAgent:
+          type: string
+          example: Mozilla/5.0 ...
+        UseHeaders:
+          type: string
+          description: default 或逗号分隔白名单头名（大小写按实际头名）
+          example: default
+        InsertTail:
+          type: boolean
+          description: 新资源插入列表尾部
+          example: true
+        MimeMap:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/MimeInfo"
+          example:
+            video/mp4:
+              Type: video
+              Suffix: .mp4
+            application/vnd.apple.mpegurl:
+              Type: m3u8
+              Suffix: .m3u8
+        Rule:
+          type: string
+          description: 多行域名规则，支持 `*`, `*.domain`, `!excluded.domain`
+          example: "*"
+      required:
+        - Theme
+        - Locale
+        - Host
+        - Port
+        - Quality
+        - SaveDirectory
+        - FilenameLen
+        - FilenameTime
+        - UpstreamProxy
+        - OpenProxy
+        - DownloadProxy
+        - AutoProxy
+        - WxAction
+        - TaskNumber
+        - DownNumber
+        - UserAgent
+        - UseHeaders
+        - InsertTail
+        - MimeMap
+        - Rule
+    MediaInfo:
+      type: object
+      properties:
+        Id:
+          type: string
+          description: 资源 ID
+          example: demo-id
+        Url:
+          type: string
+          description: 资源 URL
+          example: https://example.com/a.mp4
+        UrlSign:
+          type: string
+          description: URL 签名（通常是 md5）
+          example: 09f7e02f1290be211da707a266f153b3
+        CoverUrl:
+          type: string
+          example: https://example.com/cover.jpg
+        Size:
+          type: number
+          format: double
+          description: 字节数；未知可能为 0
+          example: 123456.0
+        Domain:
+          type: string
+          example: example.com
+        Classify:
+          type: string
+          description: 资源分类
+          example: video
+        Suffix:
+          type: string
+          example: .mp4
+        SavePath:
+          type: string
+          example: C:/Users/xxx/Downloads/demo.mp4
+        Status:
+          type: string
+          description: ready/running/error/done/handle
+          example: ready
+        DecodeKey:
+          type: string
+          description: 视频号解密 key
+          example: ""
+        Description:
+          type: string
+          example: demo video
+        ContentType:
+          type: string
+          example: video/mp4
+        OtherData:
+          type: object
+          additionalProperties:
+            type: string
+          description: 扩展字段，如 headers/wx_file_formats/last_message
+          example:
+            headers: "{\"User-Agent\":[\"Mozilla/5.0\"]}"
+    DownloadRequest:
+      allOf:
+        - $ref: "#/components/schemas/MediaInfo"
+        - type: object
+          properties:
+            decodeStr:
+              type: string
+              description: 可选，base64 解密字节串；传入则下载后自动解密
+              example: ""
+          required: [Id, Url]
+    CancelRequest:
+      type: object
+      properties:
+        Id:
+          type: string
+          description: 任务 ID
+      required: [Id]
+    DeleteRequest:
+      type: object
+      properties:
+        sign:
+          type: array
+          items:
+            type: string
+          description: UrlSign 列表
+      required: [sign]
+    SetTypeRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 逗号分隔类型，如 all 或 video,audio,image
+          example: video,audio
+      required: [type]
+    WxFileDecodeRequest:
+      allOf:
+        - $ref: "#/components/schemas/MediaInfo"
+        - type: object
+          properties:
+            filename:
+              type: string
+              description: 待解密本地文件路径
+              example: C:/Users/xxx/Downloads/source.mp4
+            decodeStr:
+              type: string
+              description: base64 编码解密字节串
+              example: BASE64_DECODE_KEY
+          required: [filename, decodeStr]

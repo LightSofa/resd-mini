@@ -783,17 +783,23 @@ const batchExport = (type?: string) => {
     jsonData = jsonData.map(item => encodeURIComponent(JSON.stringify(item)))
   }
 
-  appApi.batchExport({content: jsonData.join("\n")}).then((res: appType.Res) => {
-    loading.value = false
-    if (res.code === 0) {
-      window?.$message?.error(res.message)
-      return
-    }
-    window?.$message?.success(t("index.import_success"))
-    window?.$message?.info(t("index.save_path") + "：" + res.data?.file_name, {
-      duration: 5000
-    })
-  })
+  appApi.batchExport({content: jsonData.join("\n")})
+      .then((res: appType.Res) => {
+        if (res.code === 0) {
+          window?.$message?.error(res.message)
+          return
+        }
+        window?.$message?.success(t("index.import_success"))
+        window?.$message?.info(t("index.save_path") + "：" + res.data?.file_name, {
+          duration: 5000
+        })
+      })
+      .catch((err: any) => {
+        window?.$message?.error(err?.message || "batch export failed")
+      })
+      .finally(() => {
+        loading.value = false
+      })
 }
 
 const uint8ArrayToBase64 = (bytes: any) => {
