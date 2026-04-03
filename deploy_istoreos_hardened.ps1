@@ -5,7 +5,10 @@ param(
     [string]$Router = "root@iStoreOS",
     [string]$HostListen = "0.0.0.0",
     [int]$Port = 8899,
-    [string]$SaveDir = "/root/downloads/resd-mini"
+    [string]$SaveDir = "/root/downloads/resd-mini",
+    [int]$AutoProxy = 1,
+    [int]$GatewayHttps = 1,
+    [string]$Rule = "*.qq.com"
 )
 
 Set-StrictMode -Version Latest
@@ -78,8 +81,15 @@ Assert-RouterFormat -Value $Router
 Assert-PathExists -Path $KeyPath
 Assert-SafeRemoteValue -Name "HostListen" -Value $HostListen
 Assert-SafeRemoteValue -Name "SaveDir" -Value $SaveDir
+Assert-SafeRemoteValue -Name "Rule" -Value $Rule
 if ($Port -lt 1 -or $Port -gt 65535) {
     throw "Port out of range: $Port"
+}
+if ($AutoProxy -notin 0,1) {
+    throw "AutoProxy must be 0 or 1"
+}
+if ($GatewayHttps -notin 0,1) {
+    throw "GatewayHttps must be 0 or 1"
 }
 
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
@@ -133,7 +143,8 @@ if ($localHash -ne $remoteHash) {
 }
 
 $remoteScript = @"
-set -eu
+set -e
+set -u
 umask 022
 
 mkdir -p /usr/bin /etc/init.d /etc/config
@@ -156,6 +167,9 @@ chmod +x /etc/init.d/resd-mini
 uci set resd-mini.main.host='$HostListen'
 uci set resd-mini.main.port='$Port'
 uci set resd-mini.main.save_dir='$SaveDir'
+uci set resd-mini.main.auto_proxy='$AutoProxy'
+uci set resd-mini.main.gateway_https='$GatewayHttps'
+uci set resd-mini.main.rule='$Rule'
 uci commit resd-mini
 
 /etc/init.d/resd-mini enable
@@ -172,14 +186,38 @@ until wget -qO- 'http://127.0.0.1:$Port/api/v1/health' >/dev/null 2>&1; do
     sleep 1
 done
 "@
+$remoteScript = $remoteScript -replace "`r", ""
 
 Write-Host "==> Installing and restarting service"
 Run-External -FilePath "ssh" -ArgumentList @("-o", "BatchMode=yes", "-i", $KeyPath, $Router, $remoteScript)
 
 Write-Host "==> Local health check"
-$health = Invoke-WebRequest -UseBasicParsing -Uri "http://$routerHost`:$Port/api/v1/health" -TimeoutSec 8
-if ($health.StatusCode -ne 200) {
-    throw "Gateway health check failed: HTTP $($health.StatusCode)"
+$health = $null
+$maxHealthChecks = 20
+for ($i = 1; $i -le $maxHealthChecks; $i++) {
+    try {
+        $candidate = Invoke-WebRequest -UseBasicParsing -Uri "http://$routerHost`:$Port/api/v1/health" -TimeoutSec 8
+        if ($candidate.StatusCode -eq 200) {
+            $json = $candidate.Content | ConvertFrom-Json
+            $isOk = ($json.code -eq 1)
+            if ($isOk -and $AutoProxy -eq 1) {
+                $isOk = [bool]$json.data.proxy
+                if ($json.data.PSObject.Properties.Name -contains "gateway_transparent") {
+                    $isOk = $isOk -and [bool]$json.data.gateway_transparent
+                }
+            }
+            if ($isOk) {
+                $health = $candidate
+                break
+            }
+        }
+    } catch {
+        # continue polling
+    }
+    Start-Sleep -Seconds 1
+}
+if ($null -eq $health) {
+    throw "Gateway health check did not reach ready state within $maxHealthChecks seconds"
 }
 
 Write-Host "Deployment finished successfully"

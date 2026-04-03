@@ -116,6 +116,10 @@ func (h *HttpServer) run() {
 				}
 				mux.ServeHTTP(w, r)
 			} else {
+				if err := normalizeTransparentRequest(r); err != nil {
+					http.Error(w, "bad transparent request: "+err.Error(), http.StatusBadRequest)
+					return
+				}
 				proxyOnce.Proxy.ServeHTTP(w, r)
 			}
 		}),
@@ -126,6 +130,28 @@ func (h *HttpServer) run() {
 		globalLogger.Err(err1)
 		fmt.Printf("Service startup exception: %v", err1)
 	}
+}
+
+func normalizeTransparentRequest(r *http.Request) error {
+	if r == nil || r.URL == nil {
+		return fmt.Errorf("empty request")
+	}
+	if r.Method == http.MethodConnect {
+		return nil
+	}
+	if r.URL.Scheme != "" && r.URL.Host != "" {
+		return nil
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		return fmt.Errorf("missing host")
+	}
+	r.URL.Scheme = "http"
+	r.URL.Host = host
+	if r.URL.Path == "" {
+		r.URL.Path = "/"
+	}
+	return nil
 }
 
 func (h *HttpServer) staticHandler(w http.ResponseWriter, r *http.Request) {
@@ -466,10 +492,11 @@ func (h *HttpServer) appInfo(w http.ResponseWriter, r *http.Request) {
 
 func (h *HttpServer) health(w http.ResponseWriter, r *http.Request) {
 	h.success(w, respData{
-		"status": "ok",
-		"name":   appOnce.AppName,
-		"port":   globalConfig.Port,
-		"proxy":  appOnce.IsProxy,
+		"status":              "ok",
+		"name":                appOnce.AppName,
+		"port":                globalConfig.Port,
+		"proxy":               appOnce.IsProxy,
+		"gateway_transparent": systemOnce.GatewayTransparent,
 	})
 }
 

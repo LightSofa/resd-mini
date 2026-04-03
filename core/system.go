@@ -8,10 +8,11 @@ import (
 )
 
 type SystemSetup struct {
-	CertFile  string
-	CacheFile string
-	Password  string
-	aesCipher *AESCipher
+	CertFile           string
+	CacheFile          string
+	Password           string
+	GatewayTransparent bool
+	aesCipher          *AESCipher
 }
 
 func initSystem() *SystemSetup {

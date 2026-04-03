@@ -40,6 +40,7 @@ paths:
                       name: resd-mini
                       port: "8899"
                       proxy: false
+                      gateway_transparent: false
   /api/v1/config:
     get:
       tags: [config]
@@ -385,7 +386,11 @@ components:
         proxy:
           type: boolean
           example: false
-      required: [status, name, port, proxy]
+        gateway_transparent:
+          type: boolean
+          description: 网关透明重定向是否已生效（仅 iStoreOS/OpenWrt 有意义）
+          example: false
+      required: [status, name, port, proxy, gateway_transparent]
     MimeInfo:
       type: object
       properties:

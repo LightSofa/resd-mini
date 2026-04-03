@@ -131,6 +131,17 @@ logread -f | grep resd-mini
 - `RESD_HOST`（建议网关场景设为 `0.0.0.0`）
 - `RESD_PORT`（默认 `8899`）
 - `RESD_SAVE_DIR`
+- `RESD_AUTO_PROXY`（iStoreOS/OpenWrt 默认 `1`，服务启动后自动尝试启用透明重定向）
+- `RESD_RULE`（网关透明重定向白名单，支持域名/IP/CIDR，按换行分隔）
+- `RESD_GATEWAY_HTTPS`（默认 `0`，是否包含 `443` 透明重定向）
+
+网关透明白名单说明：
+
+- 优先使用 `dnsmasq + nftset` 动态维护域名白名单（域名解析变化会自动同步到 nft 集合）。
+- 若系统 `dnsmasq` 不支持 `nftset`，自动回退为“启动时 DNS 解析 -> 静态 IPv4 白名单”。
+- 规则示例：`*.qq.com`、`video.qq.com`、`1.2.3.4`、`1.2.3.0/24`、`!10.0.0.0/8`。
+- 变更白名单规则时会触发 `dnsmasq` 重启以确保 conf-dir 配置生效（短暂 DNS 抖动属预期）。
+- 当前版本仅保证 `80` 透明链路可用；`443` 透明嗅探仍受 TLS 处理与证书信任链限制，建议默认关闭。
 
 ---
 
@@ -254,6 +265,7 @@ OpenAPI 规范文件：[`openapi.yaml`](./openapi.yaml)
 | name | string | 应用名 |
 | port | string | 当前服务端口 |
 | proxy | boolean | 当前系统代理是否已开启 |
+| gateway_transparent | boolean | 网关透明重定向是否已生效（仅 iStoreOS/OpenWrt 有意义） |
 
 ```bash
 curl http://127.0.0.1:8899/api/v1/health

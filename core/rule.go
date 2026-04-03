@@ -12,6 +12,10 @@ type Rule struct {
 	isNeg      bool // 是否否定规则（以 ! 开头）
 	isWildcard bool // 是否为 *.domain 形式
 	isAll      bool
+	isCIDR     bool
+	cidr       *net.IPNet
+	isIP       bool
+	ip         net.IP
 	domain     string // 域名部分，不含 "*."
 }
 
@@ -63,6 +67,27 @@ func (r *RuleSet) Load(rs string) error {
 
 		isWildcard := false
 		domain := line
+
+		if ip := net.ParseIP(line); ip != nil {
+			rules = append(rules, Rule{
+				raw:   line,
+				isNeg: isNeg,
+				isIP:  true,
+				ip:    ip,
+			})
+			continue
+		}
+
+		if _, cidr, err := net.ParseCIDR(line); err == nil {
+			rules = append(rules, Rule{
+				raw:    line,
+				isNeg:  isNeg,
+				isCIDR: true,
+				cidr:   cidr,
+			})
+			continue
+		}
+
 		if strings.HasPrefix(line, "*.") {
 			isWildcard = true
 			domain = line[2:]
@@ -97,6 +122,7 @@ func (r *RuleSet) shouldMitm(host string) bool {
 		h = hp
 	}
 	h = strings.ToLower(strings.Trim(h, "[]"))
+	ip := net.ParseIP(h)
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -112,6 +138,16 @@ func (r *RuleSet) shouldMitm(host string) bool {
 			if h == rule.domain || strings.HasSuffix(h, "."+rule.domain) {
 				action = !rule.isNeg
 			}
+			continue
+		}
+
+		if rule.isIP && ip != nil && rule.ip.Equal(ip) {
+			action = !rule.isNeg
+			continue
+		}
+
+		if rule.isCIDR && ip != nil && rule.cidr != nil && rule.cidr.Contains(ip) {
+			action = !rule.isNeg
 			continue
 		}
 

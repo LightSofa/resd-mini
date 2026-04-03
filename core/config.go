@@ -2,7 +2,9 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
@@ -289,6 +291,9 @@ func (c *Config) setConfig(config Config) {
 		if err != nil {
 			globalLogger.Esg(err, "set rule failed")
 		}
+		if err := syncGatewayRuleToUCI(c.Rule); err != nil {
+			globalLogger.Esg(err, "sync gateway uci rule failed")
+		}
 	}
 
 	mimeMux.Lock()
@@ -298,6 +303,16 @@ func (c *Config) setConfig(config Config) {
 	jsonData, err := json.Marshal(c)
 	if err == nil {
 		_ = globalConfig.storage.Store(jsonData)
+	}
+
+	if runtime.GOOS == "linux" && appOnce != nil && appOnce.IsProxy && oldRule != c.Rule {
+		if err := appOnce.UnsetSystemProxy(); err != nil {
+			globalLogger.Esg(err, "reload gateway transparent rules failed on unset")
+			return
+		}
+		if err := appOnce.OpenSystemProxy(); err != nil {
+			globalLogger.Esg(err, "reload gateway transparent rules failed on set")
+		}
 	}
 }
 
@@ -358,4 +373,59 @@ func (c *Config) typeSuffix(mime string) (string, string) {
 		return v.Type, v.Suffix
 	}
 	return "", ""
+}
+
+func syncGatewayRuleToUCI(rule string) error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	uciPath := ""
+	if found, err := exec.LookPath("uci"); err == nil {
+		uciPath = found
+	} else {
+		for _, candidate := range []string{"/sbin/uci", "/usr/sbin/uci", "/bin/uci", "/usr/bin/uci"} {
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				uciPath = candidate
+				break
+			}
+		}
+	}
+	if uciPath == "" {
+		return nil
+	}
+	if _, err := os.Stat("/etc/config/resd-mini"); err != nil {
+		return nil
+	}
+
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return nil
+	}
+	distro := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToLower(line), "id=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		distro = strings.ToLower(strings.Trim(parts[1], "\" "))
+		break
+	}
+	if distro != "openwrt" && distro != "istoreos" {
+		return nil
+	}
+
+	setCmd := exec.Command(uciPath, "set", "resd-mini.main.rule="+rule)
+	if out, err := setCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("uci set rule failed: %w, output: %s", err, string(out))
+	}
+	commitCmd := exec.Command(uciPath, "commit", "resd-mini")
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("uci commit failed: %w, output: %s", err, string(out))
+	}
+	return nil
 }

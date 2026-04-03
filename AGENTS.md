@@ -58,6 +58,7 @@
 - 在 PowerShell + SSH 场景下，用 `curl -d '{\"k\":\"v\"}'` 这类写法容易被二次转义污染，导致后端报 JSON 解析错误（如 `invalid character '\\' ...`）。
 - 需要发 JSON 请求时，优先使用 `Invoke-RestMethod` + `ConvertTo-Json -Compress`，避免转义问题。
 - 若必须在路由器上发 JSON，优先 `curl -H 'Content-Type: application/json' --data-binary ...`，并先单独验证 payload。
+- codex的内置沙箱会拦截SSH相关的指令，需提权运行。
 
 ## 5. 调试方法（推荐顺序）
 
