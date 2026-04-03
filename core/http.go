@@ -165,7 +165,10 @@ func (h *HttpServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println("WebSocket read error:", err)
 			break
 		}
-		h.broadcast <- message
+		select {
+		case h.broadcast <- message:
+		default:
+		}
 	}
 	h.mutex.Lock()
 	delete(h.wsClients, conn)
@@ -246,6 +249,14 @@ func (h *HttpServer) handleMessages() {
 
 func (h *HttpServer) send(t string, data interface{}) {
 	h.syncStateByEvent(t, data)
+
+	h.mutex.RLock()
+	hasClients := len(h.wsClients) > 0
+	h.mutex.RUnlock()
+	if !hasClients {
+		return
+	}
+
 	jsonData, err := json.Marshal(map[string]interface{}{
 		"type": t,
 		"data": data,
@@ -254,7 +265,16 @@ func (h *HttpServer) send(t string, data interface{}) {
 		fmt.Println("Error converting map to JSON:", err)
 		return
 	}
-	h.broadcast <- jsonData
+
+	select {
+	case h.broadcast <- jsonData:
+	default:
+		// Drop low-priority events under pressure to protect proxy throughput.
+		if t != "downloadProgress" {
+			return
+		}
+		h.broadcast <- jsonData
+	}
 }
 
 func (h *HttpServer) syncStateByEvent(eventType string, data interface{}) {

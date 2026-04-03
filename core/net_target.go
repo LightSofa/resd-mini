@@ -28,4 +28,3 @@ func resolvedProxyAddr() string {
 func panelBaseURL() string {
 	return "http://" + resolvedProxyAddr()
 }
-

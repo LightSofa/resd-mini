@@ -3,7 +3,6 @@ package plugins
 import (
 	"encoding/json"
 	"github.com/elazarl/goproxy"
-	gonanoid "github.com/matoous/go-nanoid/v2"
 	"net/http"
 	"path/filepath"
 	"resd-mini/core/shared"
@@ -13,6 +12,36 @@ import (
 
 type DefaultPlugin struct {
 	bridge *shared.Bridge
+}
+
+var keptHeaderKeys = []string{
+	"Accept",
+	"Accept-Language",
+	"Authorization",
+	"Cache-Control",
+	"Cookie",
+	"Dnt",
+	"Origin",
+	"Pragma",
+	"Range",
+	"Referer",
+	"Sec-Ch-Ua",
+	"Sec-Ch-Ua-Mobile",
+	"Sec-Ch-Ua-Platform",
+	"Sec-Fetch-Dest",
+	"Sec-Fetch-Mode",
+	"Sec-Fetch-Site",
+	"User-Agent",
+}
+
+var ignoredStreamSuffix = map[string]struct{}{
+	".css":   {},
+	".js":    {},
+	".json":  {},
+	".map":   {},
+	".ttf":   {},
+	".woff":  {},
+	".woff2": {},
 }
 
 func (p *DefaultPlugin) SetBridge(bridge *shared.Bridge) {
@@ -25,6 +54,16 @@ func (p *DefaultPlugin) Domains() []string {
 
 func (p *DefaultPlugin) OnRequest(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return r, nil
+}
+
+func compactHeaders(h http.Header) map[string][]string {
+	out := make(map[string][]string, len(keptHeaderKeys))
+	for _, key := range keptHeaderKeys {
+		if values := h.Values(key); len(values) > 0 {
+			out[key] = values
+		}
+	}
+	return out
 }
 
 func (p *DefaultPlugin) OnResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
@@ -48,15 +87,17 @@ func (p *DefaultPlugin) OnResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *
 		}
 	}
 
+	if classify == "stream" {
+		if _, skip := ignoredStreamSuffix[strings.ToLower(suffix)]; skip {
+			return resp
+		}
+	}
+
 	urlSign := shared.Md5(rawUrl)
 	if ok := p.bridge.MediaIsMarked(urlSign); !ok && (isAll || isClassify) {
 		value, _ := strconv.ParseFloat(resp.Header.Get("content-length"), 64)
-		id, err := gonanoid.New()
-		if err != nil {
-			id = urlSign
-		}
 		res := shared.MediaInfo{
-			Id:          id,
+			Id:          urlSign,
 			Url:         rawUrl,
 			UrlSign:     urlSign,
 			CoverUrl:    "",
@@ -72,15 +113,13 @@ func (p *DefaultPlugin) OnResponse(resp *http.Response, ctx *goproxy.ProxyCtx) *
 			ContentType: resp.Header.Get("Content-Type"),
 		}
 
-		// Store entire request headers as JSON
-		if headers, err := json.Marshal(resp.Request.Header); err == nil {
+		// Keep only headers useful for replay/downloading to cut CPU and memory pressure.
+		if headers, err := json.Marshal(compactHeaders(resp.Request.Header)); err == nil {
 			res.OtherData["headers"] = string(headers)
 		}
 
 		p.bridge.MarkMedia(urlSign)
-		go func(res shared.MediaInfo) {
-			p.bridge.Send("newResources", res)
-		}(res)
+		p.bridge.Send("newResources", res)
 	}
 
 	return resp

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ProjectRoot = (Get-Location).Path,
-    [string]$KeyPath = "\C:\Users\zf\.ssh\id_ed25519",
+    [string]$KeyPath = "C:\Users\zf\.ssh\id_ed25519",
     [string]$Router = "root@iStoreOS",
     [string]$HostListen = "0.0.0.0",
     [int]$Port = 8899,
