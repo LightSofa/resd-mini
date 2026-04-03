@@ -146,6 +146,30 @@ logread -f | grep resd-mini
 
 ---
 
+## 🛠️ Windows 一键构建
+
+在项目根目录执行：
+
+```powershell
+.\build_windows.ps1
+```
+
+可选参数：
+
+- `-InstallDeps`：强制执行 `npm install`
+- `-BuildArm64`：额外构建 Windows arm64 可执行文件
+- `-BuildNsis`：生成 NSIS 安装包（依赖本机已安装 `makensis`）
+
+默认输出目录：`dist`
+
+示例（含 NSIS 安装包）：
+
+```powershell
+.\build_windows.ps1 -BuildNsis -BuildArm64
+```
+
+---
+
 ## 🔌 Web API（自动化脚本）
 
 自动化接口统一前缀：`/api/v1/*`
