@@ -8,7 +8,8 @@
     "submit": "Submit",
     "delete": "Delete",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "confirm": "Confirm"
   },
   "components": {
     "password_title": "Admin Authorization",
@@ -72,6 +73,11 @@
     "direct_download": "Download",
     "download_success": "Download Success",
     "download_no_tip": "This type of download is not supported yet. Please copy the link and use other tools to download.",
+    "download_no_tip_prefix": "This type is not supported for native download, ",
+    "download_no_tip_action": "click here to configure an automation command",
+    "download_no_tip_suffix": ", or copy the link and use another tool.",
+    "action_exec_started": "Automation command started",
+    "action_exec_failed": "Automation command failed",
     "copy_link": "Copy Link",
     "copy_data": "Copy Data",
     "open_link": "Open Link",
@@ -128,7 +134,23 @@
     "port_format_error": "port format error",
     "host_format_error": "host format error",
     "basic_setting": "Basic Setting",
-    "advanced_setting": "Advanced Setting"
+    "advanced_setting": "Advanced Setting",
+    "action_rule_type": "Rule Type",
+    "action_rule_type_placeholder": "For example .m3u8 or m3u8",
+    "action_rule_type_empty": "Please input a rule type",
+    "action_rule_apply": "Create/Select",
+    "action_rule_remove": "Delete Rule",
+    "action_rule_current": "Current Rule",
+    "action_rule_current_placeholder": "Select a rule",
+    "action_rule_enabled": "Enable Rule",
+    "action_rule_command": "Command",
+    "action_rule_placeholders": "Placeholders",
+    "action_rule_timeout": "Timeout (s)",
+    "action_rule_async": "Run Async",
+    "action_rule_success_tip": "Success Tip",
+    "action_rule_success_tip_placeholder": "Optional custom success message",
+    "action_rule_fail_tip": "Fail Tip",
+    "action_rule_fail_tip_placeholder": "Optional custom failure message"
   },
   "footer": {
     "title": "About Us",

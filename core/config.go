@@ -18,29 +18,39 @@ type MimeInfo struct {
 	Suffix string `json:"Suffix"`
 }
 
+type ActionRule struct {
+	Enabled    bool   `json:"Enabled"`
+	Command    string `json:"Command"`
+	TimeoutSec int    `json:"TimeoutSec"`
+	RunAsync   bool   `json:"RunAsync"`
+	SuccessTip string `json:"SuccessTip"`
+	FailTip    string `json:"FailTip"`
+}
+
 // Config struct
 type Config struct {
 	storage       *Storage
-	Theme         string              `json:"Theme"`
-	Locale        string              `json:"Locale"`
-	Host          string              `json:"Host"`
-	Port          string              `json:"Port"`
-	Quality       int                 `json:"Quality"`
-	SaveDirectory string              `json:"SaveDirectory"`
-	FilenameLen   int                 `json:"FilenameLen"`
-	FilenameTime  bool                `json:"FilenameTime"`
-	UpstreamProxy string              `json:"UpstreamProxy"`
-	OpenProxy     bool                `json:"OpenProxy"`
-	DownloadProxy bool                `json:"DownloadProxy"`
-	AutoProxy     bool                `json:"AutoProxy"`
-	WxAction      bool                `json:"WxAction"`
-	TaskNumber    int                 `json:"TaskNumber"`
-	DownNumber    int                 `json:"DownNumber"`
-	UserAgent     string              `json:"UserAgent"`
-	UseHeaders    string              `json:"UseHeaders"`
-	InsertTail    bool                `json:"InsertTail"`
-	MimeMap       map[string]MimeInfo `json:"MimeMap"`
-	Rule          string              `json:"Rule"`
+	Theme         string                `json:"Theme"`
+	Locale        string                `json:"Locale"`
+	Host          string                `json:"Host"`
+	Port          string                `json:"Port"`
+	Quality       int                   `json:"Quality"`
+	SaveDirectory string                `json:"SaveDirectory"`
+	FilenameLen   int                   `json:"FilenameLen"`
+	FilenameTime  bool                  `json:"FilenameTime"`
+	UpstreamProxy string                `json:"UpstreamProxy"`
+	OpenProxy     bool                  `json:"OpenProxy"`
+	DownloadProxy bool                  `json:"DownloadProxy"`
+	AutoProxy     bool                  `json:"AutoProxy"`
+	WxAction      bool                  `json:"WxAction"`
+	TaskNumber    int                   `json:"TaskNumber"`
+	DownNumber    int                   `json:"DownNumber"`
+	UserAgent     string                `json:"UserAgent"`
+	UseHeaders    string                `json:"UseHeaders"`
+	InsertTail    bool                  `json:"InsertTail"`
+	MimeMap       map[string]MimeInfo   `json:"MimeMap"`
+	ActionRules   map[string]ActionRule `json:"ActionRules"`
+	Rule          string                `json:"Rule"`
 }
 
 var (
@@ -72,6 +82,7 @@ func initConfig() *Config {
 		UseHeaders:    "default",
 		InsertTail:    true,
 		MimeMap:       getDefaultMimeMap(),
+		ActionRules:   map[string]ActionRule{},
 		Rule:          "*",
 	}
 
@@ -282,6 +293,11 @@ func (c *Config) setConfig(config Config) {
 	c.UseHeaders = config.UseHeaders
 	c.InsertTail = config.InsertTail
 	c.Rule = config.Rule
+	if config.ActionRules != nil {
+		c.ActionRules = config.ActionRules
+	} else if c.ActionRules == nil {
+		c.ActionRules = map[string]ActionRule{}
+	}
 	if oldProxy != c.UpstreamProxy || openProxy != c.OpenProxy {
 		proxyOnce.setTransport()
 	}
@@ -358,6 +374,8 @@ func (c *Config) getConfig(key string) interface{} {
 		mimeMux.RLock()
 		defer mimeMux.RUnlock()
 		return c.MimeMap
+	case "ActionRules":
+		return c.ActionRules
 	case "Rule":
 		return c.Rule
 	default:

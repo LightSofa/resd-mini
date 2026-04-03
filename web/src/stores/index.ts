@@ -32,6 +32,7 @@ export const useIndexStore = defineStore("index-store", () => {
         UseHeaders: "",
         InsertTail: true,
         MimeMap: {},
+        ActionRules: {},
         Rule: "*"
     })
 

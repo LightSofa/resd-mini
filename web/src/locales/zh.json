@@ -8,7 +8,8 @@
     "submit": "提交",
     "delete": "删除",
     "yes": "是",
-    "no": "否"
+    "no": "否",
+    "confirm": "确定"
   },
   "components": {
     "password_title": "管理员授权",
@@ -72,6 +73,11 @@
     "direct_download": "直接下载",
     "download_success": "下载成功",
     "download_no_tip": "该类型暂不支持下载，请复制链接后使用其他工具下载",
+    "download_no_tip_prefix": "该类型暂不支持下载，",
+    "download_no_tip_action": "可点击此处设置自动化操作指令",
+    "download_no_tip_suffix": "，或复制链接后使用其他工具下载",
+    "action_exec_started": "已执行自动化操作指令",
+    "action_exec_failed": "自动化操作指令执行失败",
     "copy_link": "复制链接",
     "copy_data": "复制数据",
     "open_link": "打开链接",
@@ -128,7 +134,23 @@
     "port_format_error": "port 格式错误",
     "host_format_error": "host 格式错误",
     "basic_setting": "基础设置",
-    "advanced_setting": "高级设置"
+    "advanced_setting": "高级设置",
+    "action_rule_type": "自动化规则类型",
+    "action_rule_type_placeholder": "例如 .m3u8 或 m3u8",
+    "action_rule_type_empty": "请输入规则类型",
+    "action_rule_apply": "新建/选择",
+    "action_rule_remove": "删除规则",
+    "action_rule_current": "当前规则",
+    "action_rule_current_placeholder": "请选择规则",
+    "action_rule_enabled": "启用规则",
+    "action_rule_command": "操作指令",
+    "action_rule_placeholders": "占位符",
+    "action_rule_timeout": "超时(秒)",
+    "action_rule_async": "异步执行",
+    "action_rule_success_tip": "成功提示",
+    "action_rule_success_tip_placeholder": "可选，自定义成功提示",
+    "action_rule_fail_tip": "失败提示",
+    "action_rule_fail_tip_placeholder": "可选，自定义失败提示"
   },
   "footer": {
     "title": "关于我们",

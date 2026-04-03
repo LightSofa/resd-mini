@@ -160,9 +160,11 @@ import {
   TrashOutline, CloseOutline
 } from "@vicons/ionicons5"
 import {browserOpenURL, copyToClipboard, formatSize} from "@/func"
+import {useRouter} from "vue-router"
 
 const {t} = useI18n()
 const wsStore = useWsStore()
+const router = useRouter()
 const isProxy = computed(() => {
   return store.isProxy
 })
@@ -363,7 +365,7 @@ const columns = ref<any[]>([
               if (row.SavePath && row.Status === "done") {
                 appApi.openFolder({filePath: row.SavePath})
               } else if (row.Status === "ready") {
-                download(row, index)
+                runActionOrDownload(row, index)
               }
             }
           },
@@ -554,6 +556,21 @@ onMounted(() => {
       }
     }
   })
+
+  wsStore.bindMessageHandle({
+    type: "actionProgress",
+    event: (res: { Id: string, SavePath: string, Status: string, Message: string, Detail?: any }) => {
+      updateItem(res.Id, item => {
+        item.Status = res.Status || item.Status
+        item.SavePath = res.Message || item.SavePath
+      })
+      cacheData()
+      if (res.Status === "error") {
+        window?.$message?.error(res.Message || t("index.action_exec_failed"))
+        showActionError(res.Message || t("index.action_exec_failed"), res.Detail)
+      }
+    }
+  })
 })
 
 watch(() => {
@@ -611,7 +628,7 @@ const buildClassify = () => {
 const dataAction = (row: appType.MediaInfo, index: number, type: string) => {
   switch (type) {
     case "down":
-      download(row, index)
+      runActionOrDownload(row, index)
       break
     case "cancel":
       if (row.Status === "pending") {
@@ -713,11 +730,21 @@ const batchDown = async () => {
     return
   }
 
+  let unsupportedCount = 0
   data.value.forEach((item, index) => {
-    if (checkedRowKeysValue.value.includes(item.Id) && item.Classify !== 'live' && item.Classify !== 'm3u8') {
-      download(item, index)
+    if (!checkedRowKeysValue.value.includes(item.Id)) {
+      return
     }
+    if (isNativeUnsupported(item) && !matchActionRule(item)) {
+      unsupportedCount++
+      return
+    }
+    runActionOrDownload(item, index)
   })
+
+  if (unsupportedCount > 0) {
+    showUnsupportedDownloadTip()
+  }
 
   checkedRowKeysValue.value = []
 }
@@ -804,6 +831,125 @@ const batchExport = (type?: string) => {
 
 const uint8ArrayToBase64 = (bytes: any) => {
   return window.btoa(Array.from(bytes, (byte: any) => String.fromCharCode(byte)).join(''))
+}
+
+const normalizeRuleCandidates = (row: appType.MediaInfo): string[] => {
+  const candidates: string[] = []
+  const suffix = (row.Suffix || "").trim().toLowerCase()
+  if (suffix) {
+    candidates.push(suffix)
+    if (suffix.startsWith(".")) {
+      candidates.push(suffix.slice(1))
+    } else {
+      candidates.push(`.${suffix}`)
+    }
+  }
+  const classify = (row.Classify || "").trim().toLowerCase()
+  if (classify) {
+    candidates.push(classify)
+  }
+  return Array.from(new Set(candidates))
+}
+
+const matchActionRule = (row: appType.MediaInfo): string => {
+  const rules = store.globalConfig.ActionRules || {}
+  const candidates = normalizeRuleCandidates(row)
+  for (const candidate of candidates) {
+    const key = Object.keys(rules).find(k => k.trim().toLowerCase() === candidate)
+    if (!key) {
+      continue
+    }
+    const rule = rules[key]
+    if (rule && rule.Enabled && (rule.Command || "").trim()) {
+      return key
+    }
+  }
+  return ""
+}
+
+const isNativeUnsupported = (row: appType.MediaInfo) => {
+  return row.Classify === "live" || row.Classify === "m3u8"
+}
+
+const openActionRuleSetting = (row?: appType.MediaInfo) => {
+  const suggestedType = row?.Suffix || row?.Classify || "m3u8"
+  router.push({
+    path: "/setting",
+    query: {
+      section: "action-rules",
+      type: suggestedType
+    }
+  })
+}
+
+const showUnsupportedDownloadTip = (row?: appType.MediaInfo) => {
+  window?.$dialog?.warning({
+    title: t("index.direct_download"),
+    positiveText: t("common.confirm"),
+    content: () => h("div", {class: "leading-7"}, [
+      h("span", t("index.download_no_tip_prefix")),
+      h("a", {
+        href: "javascript:;",
+        style: "color:#2080f0;text-decoration:underline;",
+        onClick: () => openActionRuleSetting(row)
+      }, t("index.download_no_tip_action")),
+      h("span", t("index.download_no_tip_suffix"))
+    ])
+  })
+}
+
+const showActionError = (message: string, detail?: any) => {
+  window?.$dialog?.error({
+    title: t("index.action_exec_failed"),
+    positiveText: t("common.confirm"),
+    content: () => h("div", {class: "whitespace-pre-wrap text-sm leading-6"}, [
+      h("div", message || t("index.action_exec_failed")),
+      h("div", {
+        class: "mt-2 text-xs text-gray-500 break-all"
+      }, JSON.stringify(detail || {}, null, 2))
+    ])
+  })
+}
+
+const runActionOrDownload = (row: appType.MediaInfo, index: number) => {
+  const matchedRuleKey = matchActionRule(row)
+  if (matchedRuleKey) {
+    appApi.actionExecute({...row}).then((res: appType.Res) => {
+      if (res.code === 0) {
+        updateItem(row.Id, item => {
+          item.Status = "error"
+          item.SavePath = res.message
+        })
+        cacheData()
+        showActionError(res.message, res.data?.detail || res.data)
+        return
+      }
+
+      if (res.data?.async) {
+        updateItem(row.Id, item => {
+          item.Status = "handle"
+          item.SavePath = t("index.action_exec_started")
+        })
+        cacheData()
+      }
+      window?.$message?.success(t("index.action_exec_started"))
+    }).catch((err: any) => {
+      updateItem(row.Id, item => {
+        item.Status = "error"
+        item.SavePath = err?.message || t("index.action_exec_failed")
+      })
+      cacheData()
+      showActionError(err?.message || t("index.action_exec_failed"))
+    })
+    return
+  }
+
+  if (isNativeUnsupported(row)) {
+    showUnsupportedDownloadTip(row)
+    return
+  }
+
+  download(row, index)
 }
 
 const download = (row: appType.MediaInfo, index: number) => {

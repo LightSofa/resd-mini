@@ -80,6 +80,7 @@ func (h *HttpServer) run() {
 	mux.HandleFunc("/api/clear", h.clear)
 	mux.HandleFunc("/api/delete", h.delete)
 	mux.HandleFunc("/api/download", h.download)
+	mux.HandleFunc("/api/action-execute", h.actionExecute)
 	mux.HandleFunc("/api/cancel", h.cancel)
 	mux.HandleFunc("/api/wx-file-decode", h.wxFileDecode)
 	mux.HandleFunc("/api/batch-export", h.batchExport)
@@ -94,6 +95,7 @@ func (h *HttpServer) run() {
 	mux.HandleFunc("/api/v1/proxy/status", h.isProxy)
 	mux.HandleFunc("/api/v1/config", h.v1Config)
 	mux.HandleFunc("/api/v1/download", h.download)
+	mux.HandleFunc("/api/v1/action/execute", h.actionExecute)
 	mux.HandleFunc("/api/v1/cancel", h.cancel)
 	mux.HandleFunc("/api/v1/clear", h.clear)
 	mux.HandleFunc("/api/v1/delete", h.delete)
@@ -310,6 +312,15 @@ func (h *HttpServer) syncStateByEvent(eventType string, data interface{}) {
 			resourceOnce.rememberMedia(media)
 		}
 	case "downloadProgress":
+		if payload, ok := data.(map[string]interface{}); ok {
+			resourceOnce.updateDownloadStatus(
+				toString(payload["Id"]),
+				toString(payload["Status"]),
+				toString(payload["Message"]),
+				toString(payload["SavePath"]),
+			)
+		}
+	case "actionProgress":
 		if payload, ok := data.(map[string]interface{}); ok {
 			resourceOnce.updateDownloadStatus(
 				toString(payload["Id"]),
@@ -592,6 +603,38 @@ func (h *HttpServer) download(w http.ResponseWriter, r *http.Request) {
 	resourceOnce.rememberMedia(data.MediaInfo)
 	resourceOnce.download(data.MediaInfo, data.DecodeStr)
 	h.success(w)
+}
+
+func (h *HttpServer) actionExecute(w http.ResponseWriter, r *http.Request) {
+	var data shared.MediaInfo
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		h.error(w, err.Error())
+		return
+	}
+
+	resourceOnce.rememberMedia(data)
+
+	key, rule, ok := matchActionRule(data)
+	if !ok {
+		h.error(w, "action rule not found")
+		return
+	}
+
+	cmd := renderActionCommand(rule.Command, buildActionContext(data))
+	result, err := runActionRule(data, rule, cmd)
+	if err != nil {
+		h.error(w, err.Error(), respData{
+			"rule_key": key,
+			"detail":   result,
+		})
+		return
+	}
+
+	h.success(w, respData{
+		"rule_key": key,
+		"detail":   result,
+		"async":    rule.RunAsync,
+	})
 }
 
 func (h *HttpServer) cancel(w http.ResponseWriter, r *http.Request) {

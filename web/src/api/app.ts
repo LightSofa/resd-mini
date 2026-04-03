@@ -106,6 +106,13 @@ export default {
             data: data
         })
     },
+    actionExecute(data: object) {
+        return request({
+            url: 'api/action-execute',
+            method: 'post',
+            data: data
+        })
+    },
     wxFileDecode(data: object) {
         return request({
             url: 'api/wx-file-decode',

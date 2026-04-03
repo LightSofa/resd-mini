@@ -1,4 +1,13 @@
 export namespace appType {
+    interface ActionRule {
+        Enabled: boolean
+        Command: string
+        TimeoutSec: number
+        RunAsync: boolean
+        SuccessTip: string
+        FailTip: string
+    }
+
     interface App {
         AppName: string
         Version: string
@@ -32,6 +41,7 @@ export namespace appType {
         UseHeaders: string
         InsertTail: boolean
         MimeMap: { [key: string]: MimeMap }
+        ActionRules: { [key: string]: ActionRule }
         Rule: string
     }
 
