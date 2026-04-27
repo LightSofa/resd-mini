@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -11,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 type ActionExecResult struct {
@@ -61,10 +65,10 @@ func buildActionFileName(media shared.MediaInfo) string {
 	}
 
 	if media.Description != "" {
-		fileName = regexp.MustCompile(`[^\w\p{Han}]`).ReplaceAllString(media.Description, "")
+		fileName = sanitizeActionFileName(media.Description)
 		fileLen := globalConfig.FilenameLen
 		if fileLen <= 0 {
-			fileLen = 30
+			fileLen = 50
 		}
 		runes := []rune(fileName)
 		if len(runes) > fileLen {
@@ -79,6 +83,13 @@ func buildActionFileName(media shared.MediaInfo) string {
 	if media.Suffix != "" && !strings.HasSuffix(strings.ToLower(fileName), strings.ToLower(media.Suffix)) {
 		fileName += media.Suffix
 	}
+	return fileName
+}
+
+func sanitizeActionFileName(s string) string {
+	fileName := regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`).ReplaceAllString(s, "")
+	fileName = strings.TrimSpace(fileName)
+	fileName = strings.TrimRight(fileName, ". ")
 	return fileName
 }
 
@@ -104,6 +115,72 @@ func renderActionCommand(tpl string, ctx map[string]string) string {
 	return result
 }
 
+func splitCommandLineSimple(s string) ([]string, bool) {
+	// Minimal splitter: supports double quotes to keep spaces together.
+	// Good enough for common patterns like:
+	//   powershell -ExecutionPolicy Bypass -File "a b.ps1" -url "..." -defaultDir "D:\\"
+	var out []string
+	var cur strings.Builder
+	inQuotes := false
+	flush := func() {
+		if cur.Len() == 0 {
+			return
+		}
+		out = append(out, cur.String())
+		cur.Reset()
+	}
+
+	for _, r := range s {
+		switch {
+		case r == '"':
+			inQuotes = !inQuotes
+		case !inQuotes && unicode.IsSpace(r):
+			flush()
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	if inQuotes {
+		return nil, false
+	}
+	flush()
+	return out, true
+}
+
+func isPowerShellFileCommand(commandLine string) bool {
+	argv, ok := splitCommandLineSimple(strings.TrimSpace(commandLine))
+	if !ok || len(argv) == 0 {
+		return false
+	}
+	exe := strings.ToLower(strings.TrimSpace(argv[0]))
+	if exe != "powershell" && exe != "powershell.exe" && exe != "pwsh" && exe != "pwsh.exe" {
+		return false
+	}
+	// Only special-case -File execution; keep other shells/builtins on cmd.exe.
+	for _, a := range argv[1:] {
+		la := strings.ToLower(strings.TrimSpace(a))
+		if la == "-file" {
+			return true
+		}
+	}
+	return false
+}
+
+func decodeWindowsOutput(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	if utf8.Valid(b) {
+		return string(b)
+	}
+	// Common on zh-CN Windows: redirected console output is in GBK/CP936.
+	if decoded, _, err := transform.Bytes(simplifiedchinese.GBK.NewDecoder(), b); err == nil && utf8.Valid(decoded) {
+		return string(decoded)
+	}
+	// Last resort: make it JSON-safe/readable (avoid U+FFFD spam in UI).
+	return string(bytes.ToValidUTF8(b, []byte("?")))
+}
+
 func executeActionCommand(rule ActionRule, commandLine string) ActionExecResult {
 	timeout := rule.TimeoutSec
 	if timeout <= 0 {
@@ -115,7 +192,16 @@ func executeActionCommand(rule ActionRule, commandLine string) ActionExecResult 
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", commandLine)
+		if isPowerShellFileCommand(commandLine) {
+			argv, ok := splitCommandLineSimple(strings.TrimSpace(commandLine))
+			if ok && len(argv) > 0 {
+				cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
+			} else {
+				cmd = exec.CommandContext(ctx, "cmd", "/C", commandLine)
+			}
+		} else {
+			cmd = exec.CommandContext(ctx, "cmd", "/C", commandLine)
+		}
 	} else {
 		cmd = exec.CommandContext(ctx, "sh", "-c", commandLine)
 	}
@@ -132,8 +218,13 @@ func executeActionCommand(rule ActionRule, commandLine string) ActionExecResult 
 	}
 
 	err := cmd.Run()
-	result.Stdout = strings.TrimSpace(stdout.String())
-	result.Stderr = strings.TrimSpace(stderr.String())
+	if runtime.GOOS == "windows" {
+		result.Stdout = strings.TrimSpace(decodeWindowsOutput(stdout.Bytes()))
+		result.Stderr = strings.TrimSpace(decodeWindowsOutput(stderr.Bytes()))
+	} else {
+		result.Stdout = strings.TrimSpace(stdout.String())
+		result.Stderr = strings.TrimSpace(stderr.String())
+	}
 	if err == nil {
 		return result
 	}

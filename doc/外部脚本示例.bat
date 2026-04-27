@@ -1,4 +1,3 @@
-wt new-tab m3u8d-cli download --M3u8Url "%url%" --FileName "%filename%" --SaveDir "%defaultDir%" | findstr /C:"下载成功" > nul  
-if %errorlevel% == 0 (  
-    call your_script.bat  
-)
+﻿@echo off
+:: 一行代码隐藏调用 PowerShell 脚本
+ powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File "download_task.ps1" -url "%url%" -filename "%filename%" -defaultDir "%defaultDir%"

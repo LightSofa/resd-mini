@@ -179,7 +179,7 @@ func (r *Resource) download(mediaInfo shared.MediaInfo, decodeStr string) {
 			fileName = regexp.MustCompile(`[^\w\p{Han}]`).ReplaceAllString(mediaInfo.Description, "")
 			fileLen := globalConfig.FilenameLen
 			if fileLen <= 0 {
-				fileLen = 30
+				fileLen = 50
 			}
 
 			runes := []rune(fileName)

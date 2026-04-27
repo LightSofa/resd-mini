@@ -25,12 +25,6 @@
 
 ---
 
-## 🧩 下载地址
-
-- 🆕 [蓝奏云下载 密码:ftlv](https://wwjv.lanzoum.com/b00l1q2mnc)
-- 🆕 [GitHub 下载](https://github.com/putyy/resd-mini/releases)
---- 
-
 ## 🚀 使用方法
 
 > 请按以下步骤操作以正确使用软件：
