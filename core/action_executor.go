@@ -64,7 +64,7 @@ func buildActionFileName(media shared.MediaInfo) string {
 		fileName = regexp.MustCompile(`[^\w\p{Han}]`).ReplaceAllString(media.Description, "")
 		fileLen := globalConfig.FilenameLen
 		if fileLen <= 0 {
-			fileLen = 10
+			fileLen = 30
 		}
 		runes := []rune(fileName)
 		if len(runes) > fileLen {

@@ -114,7 +114,7 @@ try {
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
 
-    $amd64Out = Join-Path $outputPath "resd-mini_${version}_windows_amd64.exe"
+    $amd64Out = Join-Path $outputPath "resd-mini-x64.exe.exe"
     Run-External -FilePath go -ArgumentList @("build", "-trimpath", "-ldflags", "-H=windowsgui", "-o", $amd64Out, ".") -WorkDir $ProjectRoot
     Write-Host "Built: $amd64Out"
     if ($BuildNsis) {
@@ -123,7 +123,7 @@ try {
 
     if ($BuildArm64) {
         $env:GOARCH = "arm64"
-        $arm64Out = Join-Path $outputPath "resd-mini_${version}_windows_arm64.exe"
+        $arm64Out = Join-Path $outputPath "resd-mini-arm64.exe"
         Run-External -FilePath go -ArgumentList @("build", "-trimpath", "-ldflags", "-H=windowsgui", "-o", $arm64Out, ".") -WorkDir $ProjectRoot
         Write-Host "Built: $arm64Out"
         if ($BuildNsis) {
