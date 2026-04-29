@@ -1,8 +1,11 @@
 ﻿param(
     [string]$url,
     [string]$filename,
-    [string]$defaultDir,
-    [string]$TsTempDir
+    [string]$saveDir,
+    [string]$tempDir,
+    [string]$nextScript,
+    [switch]$Detached,
+    [switch]$Monitor
 )
 
 function Get-FirstNonEmptyLine {
@@ -47,7 +50,7 @@ function Quote-Arg {
 function Invoke-ExternalUtf8 {
     param(
         [string]$FileName,
-        [string[]]$Args
+        [string[]]$ArgumentList
     )
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -64,8 +67,8 @@ function Invoke-ExternalUtf8 {
     } catch {}
 
     $argLine = ""
-    if ($Args -and $Args.Count -gt 0) {
-        $argLine = ($Args | ForEach-Object { Quote-Arg -Arg $_ }) -join " "
+    if ($ArgumentList -and $ArgumentList.Count -gt 0) {
+        $argLine = ($ArgumentList | ForEach-Object { Quote-Arg -Arg $_ }) -join " "
     }
     $psi.Arguments = $argLine
 
@@ -306,38 +309,73 @@ $script:notify.ShowBalloonTip(300000)
     }
 }
 
-$defaultDir = ($defaultDir | ForEach-Object { $_.Trim() })
-$defaultDir = $defaultDir -replace '/', '\'
-if ($defaultDir.StartsWith("\\\\")) {
-    $defaultDir = "\\\\" + (($defaultDir.Substring(2)) -replace '\\\\+', '\')
-} else {
-    $defaultDir = $defaultDir -replace '\\\\+', '\'
+function Escape-SingleQuotedPowerShellArg {
+    param([string]$Text)
+    if ($null -eq $Text) { return "" }
+    return $Text -replace "'", "''"
 }
 
-$TsTempDir = ($TsTempDir | ForEach-Object { $_.Trim() })
-if (-not [string]::IsNullOrWhiteSpace($TsTempDir)) {
-    $TsTempDir = $TsTempDir -replace '/', '\'
-    if ($TsTempDir.StartsWith("\\\\")) {
-        $TsTempDir = "\\\\" + (($TsTempDir.Substring(2)) -replace '\\\\+', '\')
-    } else {
-        $TsTempDir = $TsTempDir -replace '\\\\+', '\'
+if ($Detached -and -not $Monitor) {
+    try {
+        $scriptPath = $PSCommandPath
+        if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+            $scriptPath = $MyInvocation.MyCommand.Path
+        }
+        if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+            throw "cannot resolve wrapper script path"
+        }
+
+        $scriptEsc = Escape-SingleQuotedPowerShellArg -Text $scriptPath
+        $urlEsc = Escape-SingleQuotedPowerShellArg -Text $url
+        $filenameEsc = Escape-SingleQuotedPowerShellArg -Text $filename
+        $saveDirEsc = Escape-SingleQuotedPowerShellArg -Text $saveDir
+        $tempDirEsc = Escape-SingleQuotedPowerShellArg -Text $tempDir
+        $nextScriptEsc = Escape-SingleQuotedPowerShellArg -Text $nextScript
+
+        $monitorCommand = "& '$scriptEsc' -Monitor -url '$urlEsc' -filename '$filenameEsc' -saveDir '$saveDirEsc' -tempDir '$tempDirEsc' -nextScript '$nextScriptEsc'"
+        $encodedMonitorCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($monitorCommand))
+        $monitorArgLine = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedMonitorCommand"
+        Start-Process -WindowStyle Hidden -FilePath "powershell.exe" -ArgumentList $monitorArgLine | Out-Null
+        exit 0
+    } catch {
+        [Console]::Error.WriteLine(("failed to start m3u8 monitor: {0}" -f ($_ | Out-String).Trim()))
+        exit 1
     }
 }
 
-$logBaseDir = $defaultDir
-if (-not [string]::IsNullOrWhiteSpace($TsTempDir)) {
-    $logBaseDir = $TsTempDir
+$saveDir = ($saveDir | ForEach-Object { $_.Trim() })
+$saveDir = $saveDir -replace '/', '\'
+if ($saveDir.StartsWith("\\\\")) {
+    $saveDir = "\\\\" + (($saveDir.Substring(2)) -replace '\\\\+', '\')
+} else {
+    $saveDir = $saveDir -replace '\\\\+', '\'
+}
+
+$tempDir = ($tempDir | ForEach-Object { $_.Trim() })
+if (-not [string]::IsNullOrWhiteSpace($tempDir)) {
+    $tempDir = $tempDir -replace '/', '\'
+    if ($tempDir.StartsWith("\\\\")) {
+        $tempDir = "\\\\" + (($tempDir.Substring(2)) -replace '\\\\+', '\')
+    } else {
+        $tempDir = $tempDir -replace '\\\\+', '\'
+    }
+}
+
+$logBaseDir = $saveDir
+if (-not [string]::IsNullOrWhiteSpace($tempDir)) {
+    $logBaseDir = $tempDir
 }
 
 $logFile = New-LogFile -BaseDir $logBaseDir
 $logDir = Split-Path -Parent $logFile
-Cleanup-OldLogs -LogDir $logDir -KeepDays 3
+Cleanup-OldLogs -LogDir $logDir -KeepDays 1
 
 Write-Log -Path $logFile -Text ("url={0}" -f $url)
 Write-Log -Path $logFile -Text ("filename={0}" -f $filename)
-Write-Log -Path $logFile -Text ("defaultDir={0}" -f $defaultDir)
-Write-Log -Path $logFile -Text ("TsTempDir={0}" -f $TsTempDir)
+Write-Log -Path $logFile -Text ("defaultDir={0}" -f $saveDir)
+Write-Log -Path $logFile -Text ("TsTempDir={0}" -f $tempDir)
 Write-Log -Path $logFile -Text ("logBaseDir={0}" -f $logBaseDir)
+Write-Log -Path $logFile -Text ("nextScript={0}" -f $nextScript)
 
 Show-Notification -Title "m3u8 任务开始" -Message ("正在后台下载: {0}" -f $filename) -LaunchUri ""
 
@@ -363,10 +401,10 @@ $m3u8Args = @(
     "download",
     "--M3u8Url", $url,
     "--FileName", $filename,
-    "--SaveDir", $defaultDir
+    "--SaveDir", $saveDir
 )
-if (-not [string]::IsNullOrWhiteSpace($TsTempDir)) {
-    $m3u8Args += @("--TsTempDir", $TsTempDir)
+if (-not [string]::IsNullOrWhiteSpace($tempDir)) {
+    $m3u8Args += @("--TsTempDir", $tempDir)
 }
 
 $output = (& m3u8d-cli @m3u8Args 2>&1 | Out-String)
@@ -379,7 +417,7 @@ Write-Log -Path $logFile -Text "----- m3u8d-cli output end -----"
 
 # m3u8d-cli: "下载成功" is the only reliable success indicator (exit code can be 0 on failure).
 if ($output -match "下载成功") {
-    $targetFile = Join-Path $defaultDir $filename
+    $targetFile = Join-Path $saveDir $filename
     $launch = ""
     if (Test-Path -LiteralPath $targetFile) {
         $lnk = New-ExplorerSelectShortcut -TargetFile $targetFile -OutDir $logDir
@@ -388,15 +426,50 @@ if ($output -match "下载成功") {
         }
     }
     if ([string]::IsNullOrWhiteSpace($launch)) {
-        $launch = To-FileUri -Path $defaultDir
+        $launch = To-FileUri -Path $saveDir
         Show-Notification -Title "m3u8 下载成功" -Message ("文件已成功保存: {0} (点击打开目录)" -f $filename) -LaunchUri $launch
     } else {
         Show-Notification -Title "m3u8 下载成功" -Message ("文件已成功保存: {0} (点击打开并选中文件)" -f $filename) -LaunchUri $launch
     }
 
-    $next = Join-Path $PSScriptRoot "some_script.bat"
-    if (Test-Path -LiteralPath $next) {
-        & $next
+    if (-not [string]::IsNullOrWhiteSpace($nextScript)) {
+        $nextScript = $nextScript.Trim()
+        if (-not [System.IO.Path]::IsPathRooted($nextScript)) {
+            $nextScript = Join-Path $PSScriptRoot $nextScript
+        }
+
+        Write-Log -Path $logFile -Text ("nextScriptResolved={0}" -f $nextScript)
+        if (Test-Path -LiteralPath $nextScript) {
+            Write-Log -Path $logFile -Text "----- nextScript output begin -----"
+            $nextResult = Invoke-ExternalUtf8 -FileName "powershell.exe" -ArgumentList @(
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File", $nextScript,
+                "-SOURCE_FILE", ($targetFile + ".mp4"),
+                "-LOG_FILE", $logFile
+            )
+            $nextExitCode = $nextResult.ExitCode
+            if (-not [string]::IsNullOrWhiteSpace($nextResult.Stdout)) {
+                Write-Log -Path $logFile -Text ($nextResult.Stdout.TrimEnd())
+            }
+            if (-not [string]::IsNullOrWhiteSpace($nextResult.Stderr)) {
+                Write-Log -Path $logFile -Text ($nextResult.Stderr.TrimEnd())
+            }
+            Write-Log -Path $logFile -Text "----- nextScript output end -----"
+            Write-Log -Path $logFile -Text ("nextScriptExitCode={0}" -f $nextExitCode)
+
+            if ($nextExitCode -ne 0) {
+                Show-Notification -Title "m3u8 后续脚本异常" -Message ("下载成功，但后续脚本失败: {0}" -f $nextExitCode) -LaunchUri (To-FileUri -Path $logFile)
+                [Console]::Error.WriteLine(("nextScript failed (exit={0}). log: {1}" -f $nextExitCode, $logFile))
+                exit $nextExitCode
+            }
+        } else {
+            Write-Log -Path $logFile -Text ("nextScriptNotFound={0}" -f $nextScript)
+            Show-Notification -Title "m3u8 后续脚本异常" -Message ("未找到后续脚本: {0}" -f $nextScript) -LaunchUri (To-FileUri -Path $logFile)
+            [Console]::Error.WriteLine(("nextScript not found: {0}. log: {1}" -f $nextScript, $logFile))
+            exit 4
+        }
     }
     exit 0
 }
